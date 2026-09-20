@@ -40,7 +40,38 @@ The installer checks USB access and creates missing rules automatically.
 Existing rules and settings are preserved. No `--rules` or `--user` option is
 needed for a normal installation through `sudo`. A serial filter is optional.
 
-## Windows: suggested reading order
+## Windows: installer (recommended)
+
+The easiest way to install on 64-bit Windows is the MSI installer under
+[releases](https://github.com/jacintomfr/Radioberry-2.x/releases) (tag
+`juice-windows-v1.0.0` or later): `radioberry-juice-<version>-x64.msi`.
+It installs `radioberry-juice-x64.exe`, the FPGA gateware, and a default
+`radioberry.props` to `Program Files\radioberry-juice\`, with a Start Menu
+shortcut. Requires Administrator (it's a per-machine install, same as most
+Windows installers).
+
+**The MSI does not include the FTDI CDM driver.** Install that yourself
+first, once: download and run FTDI's own driver installer from
+[ftdichip.com/drivers/d2xx-drivers](https://ftdichip.com/drivers/d2xx-drivers/),
+then run the MSI. This is deliberate, not an oversight: FTDI's own driver
+license only permits redistributing the driver "with the Device" (i.e. by
+whoever sells the physical Radioberry hardware), and this project isn't a
+hardware seller. The installer's first screen explains this, and
+`DRIVER-README.txt` (installed alongside the program, also linked from its
+Start Menu folder) has the full explanation plus a `pnputil` command to
+verify the driver installed correctly.
+
+Building and packaging this installer yourself (e.g. after a code change)
+uses the same [WiX Toolset v3](https://wixtoolset.org/) hpsdr-rs itself
+builds with:
+
+```powershell
+packaging\windows\build-msi.ps1 -Version 1.0.0
+```
+
+See `packaging/windows/main.wxs` for the installer definition.
+
+## Windows: building from source
 
 1. Use the [Windows setup guide](FTDI-WINDOWS-README) to install the required
    compiler tools and FTDI driver.
@@ -59,6 +90,7 @@ Ubuntu in WSL. Windows uses its own driver installation procedure.
 | `*.c`, `*.h` | Host application source code and headers |
 | `linux-Makefile`, `windows-Makefile` | Platform-specific build instructions; select one with `make -f` |
 | [install-linux.sh](install-linux.sh) | Installs a completed Linux build, its local library, launcher, and missing USB rules |
+| `packaging/windows/` | MSI installer definition (WiX) and `build-msi.ps1` -- see the Windows installer section above |
 | `gateware/CL016/radioberry.rbf`, `gateware/CL025/radioberry.rbf` | FPGA gateware selected by `fpga=CL016` or `fpga=CL025` in `radioberry.props` |
 | `radioberry.props` | Configuration template; see the platform instructions for its active location |
 | `ftdi/linux/1.4.35/` | Linux D2XX headers, libraries, and original FTDI documentation per architecture |
