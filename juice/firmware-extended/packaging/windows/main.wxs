@@ -1,0 +1,165 @@
+<?xml version='1.0' encoding='windows-1252'?>
+<!--
+  MSI installer for radioberry-juice (Windows x64 build), built with the
+  WiX Toolset v3 (candle.exe/light.exe), the same tool hpsdr-rs itself
+  uses via cargo-wix, but invoked directly here since this isn't a Cargo
+  project. See packaging/windows/build-msi.ps1 for the build/pack steps
+  and DRIVER-README.txt for why the FTDI CDM driver package is
+  deliberately NOT bundled in this installer (FTDI's own driver license
+  only permits redistributing it "with the Device", i.e. by a hardware
+  seller, which this project isn't).
+
+  Variables passed in via candle.exe -d, mirroring the ones cargo-wix
+  auto-supplies for hpsdr-rs's own installer:
+    Version   = MSI product version (e.g. "1.0.0")
+    SourceDir = path to dist/windows-x64 (the built exe + gateware +
+                radioberry.props)
+-->
+<?if $(sys.BUILDARCH) = x64 ?>
+    <?define PlatformProgramFilesFolder = "ProgramFiles64Folder" ?>
+<?else ?>
+    <?define PlatformProgramFilesFolder = "ProgramFilesFolder" ?>
+<?endif ?>
+
+<Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
+
+    <Product
+        Id='*'
+        Name='Radioberry Juice'
+        UpgradeCode='7C2E6B9A-4F3D-4E8B-9A1C-2D6E8F3B5A7C'
+        Manufacturer='PA3GSB'
+        Language='1033'
+        Codepage='1252'
+        Version='$(var.Version)'>
+
+        <Package Id='*'
+            Keywords='Installer'
+            Description='USB-to-network bridge for the Radioberry SDR board'
+            Manufacturer='PA3GSB'
+            InstallerVersion='450'
+            Languages='1033'
+            Compressed='yes'
+            InstallScope='perMachine'
+            SummaryCodepage='1252'
+            />
+
+        <MajorUpgrade
+            Schedule='afterInstallInitialize'
+            DowngradeErrorMessage='A newer version of [ProductName] is already installed. Setup will now exit.'/>
+
+        <Media Id='1' Cabinet='media1.cab' EmbedCab='yes' DiskPrompt='CD-ROM #1'/>
+        <Property Id='DiskPrompt' Value='Radioberry Juice Installation'/>
+
+        <Directory Id='TARGETDIR' Name='SourceDir'>
+            <Directory Id='$(var.PlatformProgramFilesFolder)' Name='PFiles'>
+                <Directory Id='APPLICATIONFOLDER' Name='radioberry-juice'>
+                    <Component Id='DriverReadme' Guid='356B174C-374E-4DBC-8665-9C099B0E7E96'>
+                        <File Id='DriverReadmeFile'
+                            Name='DRIVER-README.txt'
+                            DiskId='1'
+                            Source='$(var.PkgDir)\DRIVER-README.txt'
+                            KeyPath='yes'/>
+                    </Component>
+
+                    <Component Id='MainExe' Guid='D13DCFF7-DC6C-4E51-B997-312EF765E67B'>
+                        <File Id='JuiceExe'
+                            Name='radioberry-juice-x64.exe'
+                            DiskId='1'
+                            Source='$(var.SourceDir)\radioberry-juice-x64.exe'
+                            KeyPath='yes'/>
+                    </Component>
+
+                    <!--
+                      radioberry.props holds per-user settings (call,
+                      locator, FPGA variant), installed only if not
+                      already present, same "don't clobber existing
+                      config" behavior as the Linux .deb's postinst.
+                      NeverOverwrite covers a repair/upgrade; a real
+                      uninstall still removes it (this is config the
+                      installer created, not something to orphan).
+                    -->
+                    <Component Id='PropsFile' Guid='01C7B5D3-74DD-4543-8106-5D483C2272C8' NeverOverwrite='yes'>
+                        <File Id='PropsFileData'
+                            Name='radioberry.props'
+                            DiskId='1'
+                            Source='$(var.SourceDir)\radioberry.props'
+                            KeyPath='yes'/>
+                    </Component>
+
+                    <Directory Id='GatewareDir' Name='gateware'>
+                        <Directory Id='Cl016Dir' Name='CL016'>
+                            <Component Id='GatewareCl016' Guid='63489D0A-3778-4AA1-8ABA-E831211367C9'>
+                                <File Id='Cl016Rbf'
+                                    Name='radioberry.rbf'
+                                    DiskId='1'
+                                    Source='$(var.SourceDir)\gateware\CL016\radioberry.rbf'
+                                    KeyPath='yes'/>
+                            </Component>
+                        </Directory>
+                        <Directory Id='Cl025Dir' Name='CL025'>
+                            <Component Id='GatewareCl025' Guid='5ABE0655-D127-4D0E-9A20-4059058473A1'>
+                                <File Id='Cl025Rbf'
+                                    Name='radioberry.rbf'
+                                    DiskId='1'
+                                    Source='$(var.SourceDir)\gateware\CL025\radioberry.rbf'
+                                    KeyPath='yes'/>
+                            </Component>
+                        </Directory>
+                    </Directory>
+                </Directory>
+            </Directory>
+            <Directory Id='ProgramMenuFolder'>
+                <Directory Id='ApplicationProgramsFolder' Name='Radioberry Juice'/>
+            </Directory>
+        </Directory>
+
+        <DirectoryRef Id='ApplicationProgramsFolder'>
+            <Component Id='ApplicationShortcut' Guid='8A1F3E6C-2B4D-4A7E-9C3F-1D5E7A9B2C4F'>
+                <Shortcut Id='ApplicationStartMenuShortcut'
+                    Name='Radioberry Juice'
+                    Description='USB-to-network bridge for the Radioberry SDR board'
+                    Target='[APPLICATIONFOLDER]radioberry-juice-x64.exe'
+                    WorkingDirectory='APPLICATIONFOLDER'/>
+                <Shortcut Id='DriverReadmeShortcut'
+                    Name='Read Me - FTDI Driver Setup'
+                    Description='How to install the required FTDI driver (not bundled -- see why)'
+                    Target='[APPLICATIONFOLDER]DRIVER-README.txt'/>
+                <RemoveFolder Id='ApplicationProgramsFolder' On='uninstall'/>
+                <RegistryValue Root='HKCU' Key='Software\radioberry-juice' Name='installed' Type='integer' Value='1' KeyPath='yes'/>
+            </Component>
+        </DirectoryRef>
+
+        <Feature
+            Id='Binaries'
+            Title='Radioberry Juice'
+            Description='Installs radioberry-juice and its FPGA gateware files. Does not install the FTDI driver -- see the included Read Me.'
+            Level='1'
+            ConfigurableDirectory='APPLICATIONFOLDER'
+            AllowAdvertise='no'
+            Display='expand'
+            Absent='disallow'>
+            <ComponentRef Id='DriverReadme'/>
+            <ComponentRef Id='MainExe'/>
+            <ComponentRef Id='PropsFile'/>
+            <ComponentRef Id='GatewareCl016'/>
+            <ComponentRef Id='GatewareCl025'/>
+            <ComponentRef Id='ApplicationShortcut'/>
+        </Feature>
+
+        <SetProperty Id='ARPINSTALLLOCATION' Value='[APPLICATIONFOLDER]' After='CostFinalize'/>
+        <Property Id='ARPHELPLINK' Value='https://github.com/jacintomfr/Radioberry-2.x'/>
+
+        <!--
+          Shown right after Welcome, before any files are installed,
+          the one place a user reliably sees it, given the driver
+          dependency can't just be a bundled Feature checkbox like a
+          normal optional component.
+        -->
+        <UI>
+            <UIRef Id='WixUI_Minimal'/>
+        </UI>
+        <WixVariable Id='WixUILicenseRtf' Value='$(var.PkgDir)\driver-notice.rtf'/>
+
+    </Product>
+
+</Wix>
