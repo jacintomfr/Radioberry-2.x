@@ -1,0 +1,39 @@
+#!/bin/bash
+set -e
+
+getent group radioberry >/dev/null || groupadd radioberry
+
+target_user="${SUDO_USER:-}"
+target_home=""
+if [ -n "$target_user" ] && [ "$target_user" != root ]; then
+    if ! id -nG "$target_user" | grep -qw radioberry; then
+        usermod -aG radioberry "$target_user"
+        echo "Added $target_user to the 'radioberry' group -- log out and back in for it to take effect."
+    fi
+    target_home=$(getent passwd "$target_user" | cut -d: -f6)
+else
+    echo "Add your login user to the 'radioberry' group manually: sudo usermod -aG radioberry \$USER"
+fi
+
+# radioberry.props holds per-user settings (call, locator, fpga variant) and
+# must be editable without sudo. The program looks for it at
+# $HOME/.radioberry/radioberry.props (see register.c), so create it there for
+# the installing user -- never under a fixed account like /home/pi, which may
+# not exist on this machine. Existing config is left untouched.
+if [ -n "$target_home" ] && [ -d "$target_home" ]; then
+    config_dir="$target_home/.radioberry"
+    if [ ! -e "$config_dir/radioberry.props" ]; then
+        install -d -m 755 -o "$target_user" -g "$(id -gn "$target_user")" -- "$config_dir"
+        install -m 644 -o "$target_user" -g "$(id -gn "$target_user")" \
+            -- /opt/radioberry-juice/radioberry.props "$config_dir/radioberry.props"
+    fi
+fi
+
+udevadm control --reload-rules 2>/dev/null || true
+udevadm trigger --subsystem-match=usb 2>/dev/null || true
+
+if [ -n "$target_home" ]; then
+    echo "radioberry-juice installed. Edit $target_home/.radioberry/radioberry.props (fpga=CL016 or CL025), reconnect the Radioberry, then run: radioberry-juice"
+else
+    echo "radioberry-juice installed. Edit ~/.radioberry/radioberry.props (fpga=CL016 or CL025), reconnect the Radioberry, then run: radioberry-juice"
+fi

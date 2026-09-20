@@ -120,8 +120,12 @@ void loadRadioberryProps() {
 	if (loaded) return;
 	loaded = 1;
 	#ifndef _WIN32
-		if (access("/home/pi/.radioberry/radioberry.props", F_OK) == 0)
-		loadProperties("/home/pi/.radioberry/radioberry.props");
+		char home_props[512];
+		const char *home = getenv("HOME");
+		int fits = home != NULL &&
+			snprintf(home_props, sizeof(home_props), "%s/.radioberry/radioberry.props", home) < (int)sizeof(home_props);
+		if (fits && access(home_props, F_OK) == 0)
+			loadProperties(home_props);
 		else loadProperties("./radioberry.props");
 	#else
 		loadProperties("./radioberry.props");

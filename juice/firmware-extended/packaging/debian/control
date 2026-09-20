@@ -1,0 +1,20 @@
+Package: radioberry-juice
+Version: 1.0-1
+Section: hamradio
+Priority: optional
+Architecture: amd64
+Maintainer: PA3GSB <pa3gsb@gmail.com>
+Depends: libc6
+Description: USB-to-network bridge for the Radioberry SDR board
+ Talks to a Radioberry 2.x board over USB (FTDI D2XX), loads its FPGA
+ gateware, and exposes it over the network via the normal openHPSDR
+ discovery/UDP protocol, same as any Metis/Hermes-family board --
+ for use with hpsdr-rs, piHPSDR, or any other openHPSDR Protocol 1
+ client. Includes the required FTDI D2XX runtime library and a udev
+ rule that grants USB access to members of the 'radioberry' group and
+ automatically releases the device from the kernel's ftdi_sio serial
+ driver so this program can use it instead.
+ .
+ The bundled FTDI D2XX library is for use with the Radioberry's own
+ genuine FTDI FT2232H USB interface chip only, per FTDI's own driver
+ license terms (see /usr/share/doc/radioberry-juice/copyright).

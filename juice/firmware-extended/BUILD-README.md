@@ -132,24 +132,26 @@ verify that `ldd` resolves D2XX from its local `lib/` directory. No system-wide
 D2XX installation is required. USB permissions and interface release remain
 separate setup steps on the target machine.
 
-On Linux, the current firmware still reads settings from this fixed path:
+On Linux, the current firmware reads settings from this path in the invoking
+user's own home directory:
 
 ```text
-/home/pi/.radioberry/radioberry.props
+$HOME/.radioberry/radioberry.props
 ```
 
 The copy in `dist/` is a template and is not loaded automatically on Linux.
-Create the fixed directory if needed and copy the template only if no
+Create the directory if needed and copy the template only if no
 configuration exists yet (run from `juice/firmware`):
 
 ```bash
-sudo mkdir -p /home/pi/.radioberry
-sudo cp -n radioberry.props /home/pi/.radioberry/radioberry.props
-sudo nano /home/pi/.radioberry/radioberry.props
+mkdir -p ~/.radioberry
+cp -n radioberry.props ~/.radioberry/radioberry.props
+nano ~/.radioberry/radioberry.props
 ```
 
-Enter your own details. This fixed path also applies when your username is
-not `pi`; configurable paths have not been implemented yet.
+Enter your own details. No `sudo` is needed -- this lives under your own
+account, so it works the same whatever your username is. `install-linux.sh`
+and the `.deb` package set this up automatically for the installing user.
 The selected gateware is read from `gateware/` in the current working directory, so start from
 the distribution directory. Any custom gateware version must match your FPGA.
 
@@ -199,8 +201,9 @@ into the distribution.
 
 For both Windows and Linux, set `fpga=CL016` or `fpga=CL025` in
 `radioberry.props` before starting. On Linux, an existing
-`/home/pi/.radioberry/radioberry.props` takes precedence over the file in
-the working directory. The selected file under `gateware/` is loaded
+`$HOME/.radioberry/radioberry.props` (for whichever user runs the program)
+takes precedence over the file in the working directory. The selected file
+under `gateware/` is loaded
 automatically. See [gateware notes](gateware/README.md).
 
 Clean an individual Windows target:

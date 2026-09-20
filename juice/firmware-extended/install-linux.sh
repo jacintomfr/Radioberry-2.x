@@ -17,7 +17,7 @@ Usage: bash install-linux.sh [options]
   --help         Show this help
 
 Installs to /opt/radioberry-juice with a launcher in /usr/local/bin.
-Preserves /home/pi/.radioberry/radioberry.props if it already exists.
+Preserves <user's home>/.radioberry/radioberry.props if it already exists.
 USB rules, helper and group access are checked during every installation.
 Stop the radio before updating. New USB rules target 0403:6010 by default.
 Existing 99-radioberry.rules and its helper are kept, including serial filters.
@@ -85,7 +85,6 @@ elif (( ! dry_run && EUID != 0 )); then
     die 'Use sudo for a live installation, or --dry-run to preview it.'
 fi
 app_dir=$destdir/opt/radioberry-juice
-config_dir=$destdir/home/pi/.radioberry
 launcher=$destdir/usr/local/bin/radioberry-juice
 rule_file=$destdir/etc/udev/rules.d/99-radioberry.rules
 helper=$destdir/usr/local/libexec/radioberry-usb-unbind
@@ -95,11 +94,14 @@ legacy_file=$destdir/etc/udev/rules.d/99-ftdisio.rules
 [[ -z $serial || $serial =~ ^[A-Za-z0-9_-]+$ ]] || die '--serial may contain only letters, digits, underscores or hyphens.'
 [[ -n $install_user && $install_user != root ]] || die 'Specify the normal login account with --user.'
 [[ $install_user =~ ^[a-zA-Z_][a-zA-Z0-9_-]*[$]?$ ]] || die 'Invalid login account name.'
+config_dir=
 if [[ -z $destdir ]]; then
     for tool in getent groupadd usermod udevadm; do
         command -v "$tool" >/dev/null || die "Required command not found: $tool"
     done
-    getent passwd "$install_user" >/dev/null || die "Unknown user: $install_user"
+    install_user_home=$(getent passwd "$install_user" | cut -d: -f6) || die "Unknown user: $install_user"
+    [[ -n $install_user_home && $install_user_home == /* ]] || die "Could not determine a home directory for $install_user"
+    config_dir=$install_user_home/.radioberry
 fi
 
 # Reject symlinked destinations before any privileged writes.
@@ -113,7 +115,7 @@ check_destination() {
 }
 for file in "${required[@]}"; do check_destination "$app_dir/$file"; done
 check_destination "$launcher"
-check_destination "$config_dir/radioberry.props"
+[[ -z $config_dir ]] || check_destination "$config_dir/radioberry.props"
 check_destination "$rule_file"
 check_destination "$helper"
 legacy_replace=0
@@ -147,7 +149,11 @@ if [[ ! -e $rule_file && -e $helper && -z $serial ]]; then
 fi
 
 printf 'Architecture: %s\nSource: %s\nInstall: %s\nLauncher: %s\n' "$arch" "$source_dir" "$app_dir" "$launcher"
-printf 'Configuration: %s (preserve if present)\n' "$config_dir/radioberry.props"
+if [[ -n $config_dir ]]; then
+    printf 'Configuration: %s (preserve if present)\n' "$config_dir/radioberry.props"
+else
+    printf 'Configuration: created per-user under ~/.radioberry/radioberry.props at package-install time\n'
+fi
 if ((legacy_replace)); then
     printf 'Old Radioberry USB rule found. Installation will back it up and remove the obsolete entry; other entries are kept.\n'
     printf 'The replacement USB setup below will be used. No manual removal is needed.\n'
@@ -175,8 +181,11 @@ for file in "${required[@]}"; do
     copy_file "$source_dir/$file" "$app_dir/$file" "$mode"
 done
 cmp -- "$source_dir/lib/libftd2xx.so" "$app_dir/lib/libftd2xx.so"
-if [[ ! -e $config_dir/radioberry.props ]]; then
-    install -D -m 644 -- "$source_dir/radioberry.props" "$config_dir/radioberry.props"
+if [[ -n $config_dir ]]; then
+    install -d -m 755 -o "$install_user" -g "$(id -gn "$install_user")" -- "$config_dir"
+    if [[ ! -e $config_dir/radioberry.props ]]; then
+        install -m 644 -o "$install_user" -g "$(id -gn "$install_user")" -- "$source_dir/radioberry.props" "$config_dir/radioberry.props"
+    fi
 fi
 
 temporary=$(mktemp -d)
@@ -246,5 +255,9 @@ if ((legacy_replace)); then
 fi
 if [[ -z $destdir ]] && ((rules_changed)); then udevadm control --reload-rules; fi
 printf 'Log out and back in, then reconnect the Radioberry to apply group access and interface release.\n'
-printf 'Installation complete. Review /home/pi/.radioberry/radioberry.props, then run radioberry-juice as your normal user.\n'
+if [[ -n $config_dir ]]; then
+    printf 'Installation complete. Review %s/radioberry.props, then run radioberry-juice as your normal user.\n' "$config_dir"
+else
+    printf 'Installation complete.\n'
+fi
 printf 'The program has not been started. Verify its library with ldd /opt/radioberry-juice/radioberry-juice.\n'

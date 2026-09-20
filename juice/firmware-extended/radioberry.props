@@ -1,4 +1,4 @@
-call=<your call>
-locator=<locator>
+call=<your CU2ED>
+locator=<HM77FR>
 # Required: set fpga to CL016 or CL025 before starting.
-fpga=
+fpga=CL025

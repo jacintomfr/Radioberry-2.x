@@ -314,7 +314,28 @@ void handlePacket(unsigned char* buffer){
 				close(sock_TCP_Client);
 				sock_TCP_Client = -1;
 				fprintf(stderr, "SDR Program sends TCP Stop command \n");
-			} else fprintf(stderr, "SDR Program sends UDP Stop command \n"); 
+			} else fprintf(stderr, "SDR Program sends UDP Stop command \n");
+			}
+			write_rb_stream(buffer);
+			break;
+		case 0x0005feef:
+			{
+			// Full graceful shutdown, distinct from Stop (0x0004feef): Stop only
+			// pauses streaming so a client can Start again later. This stops
+			// streaming the same way, then also asks runRadioberry()'s main loop
+			// to exit (closerb, checked alongside running -- see its condition)
+			// so main() reaches closeRadioberry() -> deinit_stream() -> FT_Close,
+			// releasing the FTDI handle cleanly instead of exiting via a signal
+			// or forced kill, which skips that cleanup entirely.
+			fprintf(stderr, "SDR Program sends full shutdown command \n");
+			running = 0;
+			while (active) usleep(1000);
+			if (sock_TCP_Client > -1)
+			{
+				close(sock_TCP_Client);
+				sock_TCP_Client = -1;
+			}
+			closerb = 1;
 			}
 			write_rb_stream(buffer);
 			break;
