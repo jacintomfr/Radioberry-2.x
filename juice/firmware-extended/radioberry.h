@@ -65,7 +65,25 @@ char fpgatype[16];
 int fd_rb;
 
 unsigned char run = 0;
-int closerb = 0;
+// volatile: runRadioberry() (TX loop) and packetreader()/handlePacket()
+// (RX/command handling) run on separate threads and hand off through
+// these three plain ints with no other synchronization -- e.g.
+// handlePacket's "please shut down entirely" (0x0005feef) sets
+// running = 0 then busy-waits `while (active) usleep(1000);` for
+// runRadioberry's loop to notice and clear it. Without volatile, an
+// optimized (release) build is free to cache either flag in a
+// register within its own thread's hot loop and never re-read the
+// other thread's write, which can hang that busy-wait forever --
+// confirmed against a real report where Stop consistently hit its
+// caller's (hpsdr-rs's) graceful-shutdown timeout and fell back to a
+// forced kill every time, which then never reaches closeRadioberry()'s
+// FT_Close, leaving the FTDI device stuck until a physical USB
+// unplug/replug. `volatile` alone doesn't make these accesses atomic,
+// but it does guarantee both threads actually observe each other's
+// writes instead of a stale cached copy -- enough for this file's
+// simple "spin until the other thread's flag changes" pattern, and
+// consistent with keepRunning below, which already gets this right.
+volatile int closerb = 0;
 int initRadioberry();
 void runRadioberry(void);
 int closeRadioberry();
@@ -74,7 +92,7 @@ void *packetreader(void *arg);
 int sock_TCP_Server = -1;
 int sock_TCP_Client = -1;
 int udp_retries=0;
-int active = 0;
+volatile int active = 0;
 static volatile int keepRunning = 1;
 unsigned char gateware_major_version = 73;
 unsigned char gateware_minor_version = 0;
@@ -84,7 +102,7 @@ unsigned char hpsdrdata[1032];
 unsigned char broadcastReply[60];
 void write_rb_stream(unsigned char* buffer);
     
-int running = 0;
+volatile int running = 0;
 int fd;									/* our socket */
 
 struct sockaddr_in myaddr;				/* our address */

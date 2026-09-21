@@ -65,7 +65,25 @@ int init_gateware_upload() {
 
 	//printf("Total bytes read: %ld value: %x\n", numBytesRead, inputBuffer[0]);
 
-	while (!(inputBuffer[0] & NSTATUS)) {
+	// Bounded retry (was an unconditional `while`, no limit at all) --
+	// a real report found this loop hangs forever, completely deaf to
+	// any external command (Stop, a graceful-shutdown request, etc. --
+	// none of that is checked here), when the FPGA never raises NSTATUS
+	// because the FTDI chip itself is left in a wedged state from an
+	// earlier unclean shutdown (e.g. a forced kill that skipped
+	// FT_Close). 15 retries * 1s each mirrors the FT_SetTimeouts(...,
+	// 1000, 1000) already used to open this same handle -- long enough
+	// for a real, slow-to-respond FPGA, short enough that a genuinely
+	// wedged device fails fast instead of blocking the whole process
+	// (and this handle's own Stop/shutdown handling) indefinitely.
+	for (int retry = 0; !(inputBuffer[0] & NSTATUS); retry++) {
+
+		if (retry >= 15) {
+			printf("Init FPGA gateware upload: FPGA never raised NSTATUS -- giving up \
+(the FTDI device may be wedged from an earlier unclean shutdown; a USB \
+reset or power-cycle may be needed).\r\n");
+			return -1;
+		}
 
 		if (FT_Purge(ftHandle, FT_PURGE_RX) != FT_OK) {
 			printf("Init FPGA gateware upload read failed (purge rx buffer).\r\n");
@@ -167,20 +185,35 @@ int upload_gateware(const char *image) {
 		//not possible to send all data at once... so some bulk by bulk.
 		if (numBytesToSend >= CHUNK_SIZE) {
 			//printf("Send first total bytes to send: %ld\n", numBytesToSend);
-		
+
 			if (FT_Write(ftHandle, pdata, numBytesToSend, &numBytesSent) != FT_OK) {
-				printf("Loading FPGA gateware failed.\r\n");
+				// ROOT CAUSE FIX for a real report: this used to only
+				// set return_status and keep looping -- with
+				// CHUNK_SIZE=240 and a ~9MB gateware image, that's on
+				// the order of 38000 more chunks, each potentially
+				// taking up to FT_SetTimeouts' 1000ms write timeout to
+				// fail against a wedged FTDI device, i.e. this loop
+				// could grind on for HOURS after the very first write
+				// failure -- indistinguishable from a genuine hang to
+				// anyone watching (Stop/the graceful-shutdown UDP
+				// command have no effect either, since this loop never
+				// checks for either). Failing fast here instead lets
+				// the caller (load_gateware_image_into_fpga) detect and
+				// report the failure within about a second.
+				printf("Loading FPGA gateware failed -- aborting upload (not attempting \
+the remaining data).\r\n");
 				return_status = -1;
+				break;
 			}
 
 			//printf("Bytes to send: %ld and actual sent: %ld\n", numBytesToSend, numBytesSent);
-			
+
 			numBytesToSend = 0;
-			
+
 		}
 	}
-	
-	if (FT_Write(ftHandle, pdata, numBytesToSend, &numBytesSent) != FT_OK) {
+
+	if (return_status == 0 && FT_Write(ftHandle, pdata, numBytesToSend, &numBytesSent) != FT_OK) {
 		printf("Loading FPGA gateware failed.\r\n");
 		return_status = -1;
 	}
@@ -210,7 +243,22 @@ int activate_gateware() {
 		return -1;
 	}
 
-	while (!(inputBuffer[0] & NSTATUS) && !(inputBuffer[0] & NCONF_DONE) ) {
+	// Bounded retry -- same "was an unconditional `while`, hangs
+	// forever against a wedged FTDI device" issue as
+	// init_gateware_upload's own NSTATUS wait; see that loop's own
+	// comment. 5000 retries * 1ms = 5s, matching the graceful-shutdown
+	// timeout hpsdr-rs's own caller waits before giving up and falling
+	// back to a forced kill (radioberry_juice.rs's graceful_stop) --
+	// not that this loop can actually see that request either way, but
+	// failing within roughly the same window keeps behavior consistent.
+	for (int retry = 0; !(inputBuffer[0] & NSTATUS) && !(inputBuffer[0] & NCONF_DONE); retry++) {
+
+		if (retry >= 5000) {
+			printf("Activation gateware: NSTATUS/NCONF_DONE never went low -- giving up \
+(the FTDI device may be wedged from an earlier unclean shutdown; a USB \
+reset or power-cycle may be needed).\r\n");
+			return -1;
+		}
 
 		if (FT_Purge(ftHandle, FT_PURGE_RX) != FT_OK) {
 			printf("Activation gateware read failed (purge rx buffer).\r\n");
