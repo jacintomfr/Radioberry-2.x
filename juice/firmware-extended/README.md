@@ -114,3 +114,32 @@ The Linux x86_64 build, ARM64 cross-build, and staged installer checks have
 passed. USB operation, automatic interface release, and SDR streaming still
 require verification with the actual radio. See the detailed guides for the
 current validation limits and configuration paths.
+
+## Troubleshooting
+
+**Stop/Restart hangs, "Reset USB & Restart" doesn't recover the board, and
+the only thing that works is physically unplugging/replugging the USB
+cable** (real report, fixed in commit `31161f8`, Windows MSI installer
+`v1.0.1` and later -- if your install predates this, update first):
+
+After an unclean shutdown (a forced kill of `radioberry-juice`, which
+skips `FT_Close`), the FTDI device can be left in a state where the next
+launch's FPGA gateware upload never completes -- the log gets stuck at
+"FPGA gateware upload..." indefinitely. Three loops in `gateware.c` used
+to wait forever for a response from the FPGA with no timeout at all, so
+this hang was completely unresponsive to Stop, the graceful-shutdown
+command, or even a USB reset -- the process was stuck deep inside a
+synchronous upload loop that never checked for any of them, and every
+recovery control just added to the pile of unresponsive juice processes
+until the only way out was pulling the physical cable to force-reset the
+chip's own internal state.
+
+Fixed by giving those three loops a bounded retry count each (roughly
+5-15 seconds, instead of forever), so a wedged device now fails fast and
+clearly instead of hanging. This does **not** by itself guarantee "Reset
+USB & Restart" can always recover a wedged FT2232H without a physical
+power-cycle -- that still depends on whether Windows' `pnputil`
+disable/enable reaches the chip's own internal state the same way a real
+unplug does -- but Stop/Restart/the console no longer hang indefinitely
+while that's sorted out, so a stuck board is recoverable through the app
+again instead of needing a cable pull every time.
